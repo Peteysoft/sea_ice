@@ -1,0 +1,140 @@
+#include "nr.h"
+#include "peteys_tmpl_lib.h"
+#include "ice_model.h"
+
+#define DATELEN 25
+#define LINELEN 200
+
+int main () {
+  long seed;
+  FILE * lin;
+
+  ice_model *ice;
+
+  long *ind;
+  long ntrial;
+  real_t *tbv1;		//modelled tbs
+  real_t *tbh1;
+  real_t *verr;
+  real_t *herr;
+  long margin;
+
+  real_t x0, y0;
+
+  real_t *s;
+  real_t *h;
+  real_t *z;
+
+  real_t *sr;
+  real_t *alt;
+  real_t *zangle;
+  real_t *tbh;
+  real_t *tbv;
+
+  char date[DATELEN];
+  char header[LINELEN];
+  char line[LINELEN];
+  real_t lon, lat, U, V, dy;
+  real_t z1, d, h1, t2m, u2m, v2m, cc;
+
+  real_t fov;
+  long niter;
+
+  char formr[LINELEN]="%12f%12f%8f%8f%9f%9f%9f%9f%11f%9f";
+  //char formr[LINELEN]="%23s%f%f%f%f%f%f%f%f%f%f";
+  char formt[LINELEN]="%13f%13f%10f%10f%10f%8f%11f%10f%10f%6f";
+  //char formt[LINELEN]="%f %f %f %f %f %f %f %f %f %f";
+
+  long nr, nt;
+
+  long sub1, sub2;
+
+  lin=fopen("def_coll_data.txt", "r");
+
+  fgets(header, LINELEN, lin);
+  printf(header);
+  fgets(line, LINELEN, lin);
+  sscanf(line, "%d", &nr);
+  printf("%d\n", nr);
+  fgets(header, LINELEN, lin);
+  printf(header);
+  fgets(line, LINELEN, lin);
+  sscanf(line, "%d", &nt);
+  fgets(header, LINELEN, lin);
+  printf(header);
+
+  sr=new real_t[nr];
+  alt=new real_t[nr];
+  zangle=new real_t[nr];
+  tbh=new real_t[nr];
+  tbv=new real_t[nr];
+  for (long i=0; i<nr; i++) {
+    fgets(line, LINELEN, lin);
+    sscanf(line+23, formr, &lon, &lat, alt+i, zangle+i, tbh+i, tbv+i,
+		    &U, &V, sr+i, &dy);
+    //printf(line);
+    //printf("%s %f %f %f %f %f %f %f %f %f %f\n", date, lon, lat, alt[i],
+	//	    zangle[i], tbh[i], tbv[i], U, V, sr[i], dy);
+  }
+
+  fgets(header, LINELEN, lin);
+
+  s=new real_t[nt];
+  h=new real_t[nt];
+  z=new real_t[nt];
+  for (long i=0; i<nt; i++) {
+    fgets(line, LINELEN, lin);
+    sscanf(line+23, formt, &lon, &lat, &z1, &d, &h1, &t2m, 
+		    s+i, &u2m, &v2m, &cc);
+    z[i]=z1;
+    h[i]=h1;
+    //printf(line+23);
+    //printf(formt, lon, lat, z[i], d, h[i], t2m,
+	//	    s[i], u2m, v2m, cc);
+    //printf("\n");
+    //printf("%f %f %f\n", s[i], z[i], h[i]);
+  }
+
+  //exit(0);
+
+  ice=new ice_model();
+
+  //try to fit the entire surface: (probably won't work...)
+  //if (ice->set_surface(s, h, nt, s, z, nt)) exit(1);
+
+  ind=new long[ntrial];
+  tbv1=new real_t[ntrial];
+  tbh1=new real_t[ntrial];
+
+  fov=7.5;
+  margin=2000;
+  niter=1000;
+  ntrial=100;
+
+  for (long i=0; i<ntrial; i++) {
+    ind[i]=(long) (ran2(&seed)*(nr-2*margin)+margin);
+    y0=alt[ind[i]];
+    x0=sr[ind[i]]+y0*tan(zangle[ind[i]]);
+
+    //since the numerical recipes routine is so shitty, we have to fit
+    //only a piece of the surface at a time instead of the whole thing:
+    sub1=bin_search(s, nt, sr[ind[i]]-500);
+    sub2=bin_search(s, nt, sr[ind[i]]+200);
+    printf("%d %d\n", sub1, sub2);
+
+    if (ice->set_surface(s+sub1, h+sub1, sub2-sub1+1, s+sub1, z+sub1, sub2-sub1+1)) {
+      i--;
+      continue;
+    }
+
+    tbv1[i]=ice->tb(x0, y0, zangle[ind[i]], fov, 0, 1000L, verr[i]);
+    tbh1[i]=ice->tb(x0, y0, zangle[ind[i]], fov, 1, 1000L, herr[i]);
+
+    printf("%f, %f +/- %f\n", tbv[ind[i]], tbv1[i], verr[i]);
+    printf("%f, %f +/- %f\n", tbh[ind[i]], tbh1[i], herr[i]);
+
+  }
+
+}
+    
+
