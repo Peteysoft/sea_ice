@@ -1,0 +1,255 @@
+@ice_model_util
+
+;dirt simple plane parallel radiative transfer model:
+
+;most basic version, takes only the complex permittivities:
+pro ppeps, nu, zangle, dz, t, eps, bound, tbv, tbh, theta=theta
+
+  nz=n_elements(eps)
+
+  ;calculate refractive indices and absorption coefficients:
+  n=sqrt(eps)
+  c=0.3
+  abs_coef=4*!pi*imaginary(n)*nu/c
+  
+  ;calculate refraction angles and Fresnel coefficients:
+  nbound=n_elements(bound)
+  theta=complexarr(nz)
+  theta[0]=zangle
+  for i=1, nz-1 do begin
+    theta[i]=asin(n[i-1]*sin(theta[i-1])/n[i])
+  endfor
+  costhet=cos(theta)
+  rh=complexarr(nbound)
+  rv=complexarr(nbound)
+  for i=0, nbound-1 do begin
+    k1=bound[i]
+    k2=k1+1
+    rh[i]=(n[k1]*costhet[k1]-n[k2]*costhet[k2])/ $
+		(n[k1]*costhet[k1]+n[k2]*costhet[k2])
+    rv[i]=(n[k1]*costhet[k2]-n[k2]*costhet[k1])/ $
+		(n[k1]*costhet[k2]+n[k2]*costhet[k1])
+  endfor
+
+  ;real angles and reflection coefficients for each level
+  ;to make computation easier:
+  rh1=fltarr(nz)
+  rv1=fltarr(nz)
+  k=0
+  for i=0, nz-1 do begin
+    rh1[i]=0
+    rv1[i]=0
+    if k lt nbound then begin
+      if i ge bound[k] then begin
+        rh1[i]=abs(rh[k]^2)
+        rv1[i]=abs(rv[k]^2)
+        k=k+1
+      endif
+    endif
+  endfor
+
+  ;transmission at each layer
+  trans=exp(-abs_coef*dz/costhet)
+  ;emission temperature of each layer:
+  tem=t*(1-trans)
+
+  ;construct the matrix:
+
+  ;do this the easy way to start with:
+  ;(note to self...)
+  a1=fltarr(nz*2, nz*2)
+  a2=fltarr(nz*2, nz*2)
+
+  a1a=fltarr(nz*2, nz*2)
+  a2a=fltarr(nz*2, nz*2)
+
+  for i=0, nz-2 do begin
+    a1[i, i]=1
+    a2[i, i]=1
+    a1[i+1, i]=-(1-rv1[i])*trans[i]
+    a1[i+nz, i]=-rv1[i]*trans[i]
+    a2[i+1, i]=-(1-rh1[i])*trans[i]
+    a2[i+nz, i]=-rh1[i]*trans[i]
+  endfor
+
+  ;more efficient way to populate the matrix:
+  ind1=lindgen(nz-1)
+  a1a[ind1, ind1]=1
+  a2a[ind1, ind1]=1
+  a1a[ind1+1, ind1]=-(1-rv1[0:nz-2])*trans[0:nz-2]
+  a1a[ind1+nz, ind1]=-rv1[0:nz-2]*trans[0:nz-2]
+  a2a[ind1+1, ind1]=-(1-rh1[0:nz-2])*trans[0:nz-2]
+  a2a[ind1+nz, ind1]=-rh1[0:nz-2]*trans[0:nz-2]
+
+  for i=1, nz-1 do begin
+    a1[i+nz, i+nz]=1
+    a2[i+nz, i+nz]=1
+    a1[i+nz-1, i+nz]=-(1-rv1[i-1])*trans[i]
+    a1[i, i+nz]=-rv1[i-1]*trans[i]
+    a2[i+nz-1, i+nz]=-(1-rh1[i-1])*trans[i]
+    a2[i, i+nz]=-rh1[i-1]*trans[i]
+  endfor
+  a1[nz-1, nz-1]=1
+  a1[nz, nz]=1
+  a2[nz-1, nz-1]=1
+  a2[nz, nz]=1
+
+  a1a[ind1+nz+1, ind1+nz+1]=1
+  a2a[ind1+nz+1, ind1+nz+1]=1
+  a1a[ind1+nz, ind1+nz+1]=-(1-rv1[0:nz-2])*trans[1:nz-1]
+  a1a[ind1+1, ind1+nz+1]=-rv1[0:nz-2]*trans[1:nz-1]
+  a2a[ind1+nz, ind1+nz+1]=-(1-rh1[0:nz-2])*trans[1:nz-1]
+  a2a[ind1+1, ind1+nz+1]=-rh1[0:nz-2]*trans[1:nz-1]
+  a1a[nz-1, nz-1]=1
+  a1a[nz, nz]=1
+  a2a[nz-1, nz-1]=1
+  a2a[nz, nz]=1
+
+  b=fltarr(nz*2)
+  b[nz-1]=t[nz-1]		;sea temperature
+  b[nz]=t[0]			;sky temperature
+  for i=1, nz-1 do begin
+    b[i]=tem[i]
+    b[i+nz]=tem[i]
+  endfor
+
+  b1=fltarr(nz*2)
+  b1[nz-1]=t[nz-1]
+  b1[nz]=t[0]
+  b1[ind1+1]=tem[1:nz-1]
+  b1[ind1+nz+1]=tem[1:nz-1]
+
+  ;solve the sparse matrix:
+  a=a1
+  ludc, a, index
+  tbv=lusol(a, index, b)
+  a=a2
+  ludc, a, index
+  tbh=lusol(a, index, b)
+
+  stop
+
+end
+
+;dirt simple plane parallel radiative transfer model:
+;nu	= frequency
+;zangle = zenith angle
+;dz	= layer thickness
+;t	= temperature (only used for ice)
+;type	= 0=air, 1=snow, 2=compacted snow, 3=fy, 4=my, 5=water
+;		(currently only snow vs. ice distinquished
+;rho	= density (currently only used for snow)
+;s	= salinity (currently only used for ice)
+;bound	= boundaries between distinct layers (indices)
+
+pro plane_parallel1, nu, zangle, dz, t, type, rho, s, bound, $
+		tbv, tbh, theta=theta, eps=eps
+  ;first we calculate the complex permittivities of each layer:
+  nz=n_elements(dz)
+  eps=complexarr(nz)
+
+  ;snow:
+  ind=where(type eq 3 or type eq 4, cnt)
+  if cnt ne 0 then eps[ind]=eps_si(nu, t[ind]-273.2, s[ind])
+  ;ice:
+  ind=where(type eq 1 or type eq 2, cnt)
+  if cnt ne 0 then eps[ind]=complex(1+1.6*rho[ind]+1.86*rho[ind]^3, 0.0001)
+
+  ;air and water:
+  ind=where(type eq 5, cnt)
+  if cnt ne 0 then for i=0, cnt-1 do $
+		eps[ind[i]]=eps_oc2(nu, t[ind[i]], s[ind[i]])
+  ;use a fixed value for ocean water:
+  ;if cnt ne 0 then eps[ind]=complex(75., 45.)
+  ind=where(type eq 0, cnt)
+  if cnt ne 0 then eps[ind]=complex(1, 0)
+
+  ;print, t
+  ;print, s
+
+  ;print, eps
+
+  ppeps, nu, zangle, dz, t, eps, bound, tbv, tbh, theta=theta
+
+end
+  
+;simply prepares the profile: (input taken from Rasmus's thermodynamic model)
+pro plane_parallel, nu, zangle, dz1, t1, type1, rho1, s1, tbv1, tbh1, $
+		theta=theta, allbound=allbound, eps=eps, tbsky=tbsky
+
+  if n_elements(tbsky) ne 1 then tbsky=5.
+
+  dz=[1, dz1, 1]
+  t=[tbsky, t1, 271]
+  type=[0, type1, 5]
+  s=[0, s1, 35.]
+  rho=[0.00124, rho1, 1.]
+  nz=n_elements(dz)
+
+  if keyword_set(allbound) then begin
+    bound=lindgen(nz-1)
+  endif else begin
+    bound=where(type[0:nz-2] ne type[1:nz-1])
+  endelse
+
+  plane_parallel1, nu, zangle*!dtor, dz, t, type, rho, s, bound, tbv, tbh, $
+		theta=theta, eps=eps
+
+  tbv1=tbv[0]
+  tbh1=tbh[0]
+
+end
+  
+
+pro test_pp, plot=doplot
+  nz=5
+  dz=fltarr(nz)+0.2
+  t=263+findgen(nz)*2
+  t[0]=5.
+  type=[0, 1, 3, 3, 5]
+  rho=[0, 0.3, 0.9, 0.9, 1]
+  s=[0, 3, 6, 6, 35.]
+  bound=[0, 1, 3]
+  ;bound=[0, 1, 2, 3]
+
+  plane_parallel1, 1.4, !dtor*50., dz, t, type, rho, s, bound, tbv, tbh, $
+		theta=theta
+  theta=float(theta)
+
+
+
+  if n_elements(doplot) ne 0 then begin
+    ;grey=rgbtoindex(150, 150, 150)
+    ps_start, doplot, /landscape
+    grey=200
+
+    z=-[0, total(dz, /cum)]
+    thick=5
+    plot, findgen(10), /nodata, xrange=[0, 1.5], yrange=[-1, 0], $
+		xstyle=4, ystyle=4, thick=thick
+    for i=1, nz-1 do begin
+      oplot, [0.2, 1], [1, 1]*z[i], thick=thick
+    endfor
+
+    x=0.8-[0, total(dz*sin(theta), /cum)]
+   
+    oplot, x, z, thick=15, color=grey
+
+    cs=2.5
+    ct=5
+    xyouts, 1.05, z[2], textoidl("R_{i-1}"), charsize=cs, charthick=ct
+    xyouts, 1.05, z[3], textoidl("R_i"), charsize=cs, charthick=ct
+    xyouts, 0.8, (z[2]+z[3])/2, textoidl("\epsilon_i, T_i"), $
+		charsize=cs, charthick=ct
+
+    xyouts, 0.6, z[3]+dz[2]*0.76, textoidl("T_i\uparrow"), $
+		charsize=cs, charthick=ct
+    xyouts, 0.6, z[3]+dz[2]*0.1, textoidl("T_i\downarrow"), $
+		charsize=cs, charthick=ct
+    ps_end
+  endif
+
+  stop
+end
+
+

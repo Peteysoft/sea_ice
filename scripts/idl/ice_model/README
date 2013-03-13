@@ -1,0 +1,8 @@
+1. There ought to be some kind of version control here
+2. I want to make everything consistent:
+- so many calculations have been inlined
+- I used different formulas for the same thing, esp. brine volume
+-> remove inlined formulas, stick in functions
+-> try to have one, "canonical" version of each function, esp. things like brine
+   volume and the different effective permittivity formulas,
+-> if there is more than one version, should be clearly distinquished...
