@@ -1,0 +1,90 @@
+;simple read routine for AMSR-E data...
+
+;channel numbers:
+;1.	6 GHz v
+;2.	6 GHz h
+;3.	10 GHz v
+;4.	10 GHz h
+;5.	18 GHz v
+;6.	18 GHz h
+;7.	23 GHz v
+;8.	23 GHz h
+;9.	36 GHz v
+;10.	36 GHz h
+;11.	50 GHz v
+;12.	53 GHz v
+;13.	89 (a) GHz v
+;14.	89 (a) GHz h
+;(currently the lons and lats don't match for these...)
+;15.	89 (b) GHz v
+;16.	89 (b) GHz h
+function read_amsre, filename, chan, lon, lat, date=date, time=time
+
+id=hdf_sd_start(filename)
+
+hdf_sd_attrinfo, id, 7, data=time
+hdf_sd_attrinfo, id, 8, data=date
+print, time
+print, date
+
+;get coefficients:
+sid=hdf_sd_select(id, 21)
+hdf_sd_getdata, sid, coeff
+
+sid=hdf_sd_select(id, chan)
+hdf_sd_getinfo, sid, name=name
+print, name
+hdf_sd_attrinfo, sid, 0, data=sf
+hdf_sd_attrinfo, sid, 1, data=unit
+print, unit
+
+hdf_sd_getdata, sid, counts
+counts=counts*sf[0]
+
+;use coefficients to return brightness temperatures:
+sz=size(counts, /dim)
+c1=(chan-1)*2
+c2=chan*2-1
+print, c1, c2
+tb=rebin(coeff[c2, *], sz[0], sz[1])*counts+$
+		rebin(coeff[c1, *], sz[0], sz[1])
+
+;get longitudes and latitudes:
+if arg_present(lon) then begin
+  if chan eq 15 or chan eq 16 then begin
+    lonid=28
+    latid=27
+  endif else begin
+    lonid=26
+    latid=25
+  endelse
+
+  sid=hdf_sd_select(id, latid)
+  hdf_sd_attrinfo, sid, 0, data=sf
+  hdf_sd_attrinfo, sid, 1, data=unit
+  print, unit
+
+  hdf_sd_getdata, sid, lat
+  lat=lat*sf[0]
+
+  sid=hdf_sd_select(id, lonid)
+  hdf_sd_attrinfo, sid, 0, data=sf
+  hdf_sd_attrinfo, sid, 1, data=unit
+  print, unit
+
+  hdf_sd_getdata, sid, lon
+  lon=lon*sf[0]
+
+  if chan lt 13 then begin
+    ind=lindgen(sz[0])*2
+    lat=lat[ind, *]
+    lon=lon[ind, *]
+  endif
+endif
+
+hdf_sd_end, id
+
+return, tb
+
+end
+

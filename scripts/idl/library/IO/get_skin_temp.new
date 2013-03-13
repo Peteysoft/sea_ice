@@ -1,0 +1,63 @@
+@time_lib
+
+;stupid, but we assume all dates have the same year...
+function get_skin_temp, date1, lon1, lat1
+  ;common get_skin_temp_buf, nc, year, lon, lat, t, tind_old, slice1, slice2
+
+  date=convert_date(date1)
+
+  n=n_elements(lon1)
+  if nt eq 1 then date=replicate(date, n)
+
+  if n_elements(year) eq 0 then begin
+    year=-1
+    tind_old=-1
+  endif
+  if date[0].year ne year then begin
+    if n_elements(nc) eq 1 then ncdf_close, nc
+    year=date[0].year
+
+    yrstr=string(year, format="(i4.4)")
+    filename="/freax/storage/home/pmills/smos/data/skt.sfc.gauss."+yrstr+".nc"
+    nc=ncdf_open(filename)
+
+    ncdf_varget, nc, "lon", lon
+    ncdf_varget, nc, "lat", lat
+    ncdf_varget, nc, "time", t
+  endif
+
+  nlon=n_elements(lon)
+  nlat=n_elements(lat)
+  nt=n_elements(t)
+
+
+  ;refdate=convert_date('1/1/14')
+  tval=day_value(date, refdate)*24.
+
+  ntgrid=n_elements(t)
+  tindd=interpol(findgen(nt), t, tval-tval[0])
+  tind=long(tindd)
+
+  tinds=tind[sort(tindd)]
+  mintind=tinds[0]
+  ntsl=tinds[n-1]-mintind+2
+
+  ;if tindd ne tind_old then begin
+    ncdf_attget, nc, "skt", "add_offset", add_offset
+    ncdf_attget, nc, "skt", "scale_factor", scale_factor
+    ncdf_varget, nc, "skt", slice, offset=[0, 0, mintind], count=[nlon, nlat, ntsl]
+    slice=add_offset+scale_factor*slice
+  ;endif
+
+  xind=interpol(findgen(nlon), lon, lon1)
+  yind=interpol(findgen(nlat), lat, lat1)
+
+  skt=interpolate(slice, xind, yind, tindd-mintind)
+
+  stop
+
+  return, skt
+
+end
+    
+
