@@ -1,0 +1,6 @@
+ice_thickness/20070312_MRJN_P2X_afternoon.dat	laser/200703121424.fb
+ice_thickness/20070312_MRJN_P2X_morning.dat	laser/200703121105.fb
+ice_thickness/20070312_P7X_MRJN_afternoon.dat	laser/200703121457.fb
+ice_thickness/20070312_P7X_MRJN_morning.dat	laser/200703121316.fb
+ice_thickness/20070313_P2A_P4X.dat		laser/200703131539.fb
+ice_thickness/20070313_P3X_P2A.dat		laser/200703131434.fb
