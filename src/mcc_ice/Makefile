@@ -1,4 +1,4 @@
-BASEDIR = /home/petey
+BASEDIR = /home/peter
 
 # processor type:
 PROC = 64

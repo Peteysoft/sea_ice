@@ -1,4 +1,5 @@
 #include <math.h>
+#include <getopt.h>
 
 #include "mcc_ice_model.h"
 
